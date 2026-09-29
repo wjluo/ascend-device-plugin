@@ -57,7 +57,22 @@ type VNPUsConfig struct {
 }
 
 type Config struct {
-	VNPUs VNPUsConfig `json:"vnpus"`
+	VNPUs     VNPUsConfig     `json:"vnpus"`
+	HyperNode HyperNodeConfig `json:"hypernode,omitempty"`
+}
+
+// HyperNodeConfig controls writing the supernode (SuperPoD performance domain)
+// identity label on the Node, consumed by HAMi's hypernode-aware scheduling.
+type HyperNodeConfig struct {
+	// Enabled turns the label writer on; absent section means disabled so
+	// existing deployments keep their behaviour.
+	Enabled bool `json:"enabled,omitempty"`
+	// LabelKey is the node label key carrying the supernode identity.
+	// Defaults to HAMi's HyperNodeLabelKey.
+	LabelKey string `json:"labelKey,omitempty"`
+	// ValueTemplate renders the label value from the resolved super-pod id,
+	// e.g. "supernode-{{ .SuperPodID }}". Defaults to that example.
+	ValueTemplate string `json:"valueTemplate,omitempty"`
 }
 
 // legacyConfig is the device-config.yaml layout of HAMi <= v2.8.x, where vnpus
@@ -117,12 +132,13 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 type NodeConfig struct {
-	Name              string        `json:"name" yaml:"name"`
-	HamiVnpuCore      bool          `json:"hami-vnpu-core" yaml:"hami-vnpu-core"`
-	Enpu              *bool         `json:"enpu,omitempty" yaml:"enpu,omitempty"`
-	VDeviceCount      int           `json:"vDeviceCount" yaml:"vDeviceCount"`
-	DeviceCoreScaling float64       `json:"deviceCoreScaling,omitempty" yaml:"deviceCoreScaling,omitempty"`
-	FilterDevices     FilterDevices `json:"filterDevices,omitempty" yaml:"filterDevices,omitempty"`
+	Name              string           `json:"name" yaml:"name"`
+	HamiVnpuCore      bool             `json:"hami-vnpu-core" yaml:"hami-vnpu-core"`
+	Enpu              *bool            `json:"enpu,omitempty" yaml:"enpu,omitempty"`
+	VDeviceCount      int              `json:"vDeviceCount" yaml:"vDeviceCount"`
+	DeviceCoreScaling float64          `json:"deviceCoreScaling,omitempty" yaml:"deviceCoreScaling,omitempty"`
+	FilterDevices     FilterDevices    `json:"filterDevices,omitempty" yaml:"filterDevices,omitempty"`
+	HyperNode         *HyperNodeConfig `json:"hypernode,omitempty" yaml:"hypernode,omitempty"`
 }
 
 type NodeListConfig struct {

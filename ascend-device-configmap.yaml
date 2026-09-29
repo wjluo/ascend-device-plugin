@@ -147,3 +147,7 @@ data:
             memory: 32768
             aiCore: 10
             aiCPU: 3
+    hypernode:
+      enabled: true
+      labelKey: hami.io/hypernode
+      valueTemplate: "supernode-{{ .SuperPodID }}"

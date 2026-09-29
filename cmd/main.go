@@ -145,6 +145,9 @@ func main() {
 			klog.Errorf("load node config failed: %v", err)
 		}
 	}
+	// Wire the hypernode section of the device config before the plugin server
+	// resolves the supernode identity label at construction.
+	server.SetHyperNodeConfig(mgr.HyperNodeConfig())
 	server, err := server.NewPluginServer(mgr, *nodeName, *checkIdleVNPUInterval, *enablePeriodicIdleVNPUCleanup)
 	if err != nil {
 		klog.Fatalf("init PluginServer failed, error is %v", err)

@@ -78,6 +78,11 @@ type PluginServer struct {
 	// when the set actually changed.
 	lastPublishedDevices string
 
+	// hyperNodeLabels is the supernode identity label resolved once at server
+	// construction (nil when the feature is disabled or the hardware exposes
+	// no supernode identity), patched onto the Node on every registration.
+	hyperNodeLabels map[string]string
+
 	// test hooks — injected by tests to avoid real socket/kubelet dependencies
 	dialFunc                 func(unixSocketPath string, timeout time.Duration) (*grpc.ClientConn, error)
 	registerKubeletFunc      func() error
@@ -143,6 +148,7 @@ func NewPluginServer(mgr manager.Manager, nodeName string, checkIdleVNPUInterval
 	}
 	// enable calling hami methods
 	device.InRequestDevices[commonWord] = server.toAllocDeviceAnno
+	server.hyperNodeLabels = resolveHyperNodeLabels()
 	return server, nil
 }
 

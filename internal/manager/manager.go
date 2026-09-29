@@ -407,3 +407,12 @@ func (am *AscendManager) DeviceCoreScaling() float64 {
 	}
 	return am.globalConfig.VNPUs.DeviceCoreScaling
 }
+
+// HyperNodeConfig returns the hypernode section of the loaded device config,
+// preferring the node-specific override when present.
+func (am *AscendManager) HyperNodeConfig() internal.HyperNodeConfig {
+	if am.nodeConfig != nil && am.nodeConfig.HyperNode != nil {
+		return *am.nodeConfig.HyperNode
+	}
+	return am.globalConfig.HyperNode
+}

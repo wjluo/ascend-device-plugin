@@ -171,6 +171,16 @@ func (ps *PluginServer) registerHAMi() error {
 		return fmt.Errorf("patch node %s annotations error: %w", ps.nodeName, err)
 	}
 	klog.V(5).Infof("patch node %s annotations: %v", ps.nodeName, annos)
+
+	// Supernode identity label (A1): the value is resolved once at server
+	// construction; nil means the node carries no supernode semantics and the
+	// label is left untouched, keeping unlabelled nodes degrade gracefully.
+	if len(ps.hyperNodeLabels) > 0 && hyperNodeLabelsNeedUpdate(node, ps.hyperNodeLabels) {
+		if err := patchNodeLabels(node, ps.hyperNodeLabels); err != nil {
+			return fmt.Errorf("patch node %s hypernode labels error: %w", ps.nodeName, err)
+		}
+		klog.V(5).Infof("patch node %s hypernode labels: %v", ps.nodeName, ps.hyperNodeLabels)
+	}
 	return nil
 }
 

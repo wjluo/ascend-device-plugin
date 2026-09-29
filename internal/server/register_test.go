@@ -28,7 +28,9 @@ import (
 
 	"github.com/Project-HAMi/HAMi/pkg/device"
 	"github.com/Project-HAMi/HAMi/pkg/util/client"
+	"github.com/Project-HAMi/ascend-device-plugin/internal"
 	"github.com/Project-HAMi/ascend-device-plugin/internal/manager"
+	"github.com/Project-HAMi/ascend-device-plugin/internal/monitor"
 )
 
 func TestRegisterHAMiENPUNodeAnnotation(t *testing.T) {
@@ -601,5 +603,137 @@ func TestRegisterHAMi(t *testing.T) {
 				tc.want.annotationCheck(t, updated.Annotations)
 			}
 		})
+	}
+}
+
+func TestResolveHyperNodeLabels(t *testing.T) {
+	origCfg := hyperNodeCfg
+	origIDFunc := superPodIDFunc
+	t.Cleanup(func() {
+		hyperNodeCfg = origCfg
+		superPodIDFunc = origIDFunc
+	})
+
+	tests := []struct {
+		name     string
+		cfg      func() internal.HyperNodeConfig
+		id       int32
+		idErr    error
+		want     map[string]string
+		wantName string // substring expected in the warning path log; unused assertion
+	}{
+		{
+			name: "disabled keeps labels nil",
+			cfg:  func() internal.HyperNodeConfig { return internal.HyperNodeConfig{} },
+			id:   5,
+			want: nil,
+		},
+		{
+			name: "blank label key keeps labels nil",
+			cfg: func() internal.HyperNodeConfig {
+				return internal.HyperNodeConfig{Enabled: true}
+			},
+			id:   5,
+			want: nil,
+		},
+		{
+			name: "supported id renders default template",
+			cfg: func() internal.HyperNodeConfig {
+				return internal.HyperNodeConfig{Enabled: true, LabelKey: DefaultHyperNodeLabelKey}
+			},
+			id:   5,
+			want: map[string]string{"hami.io/hypernode": "supernode-5"},
+		},
+		{
+			name: "custom template is honoured",
+			cfg: func() internal.HyperNodeConfig {
+				return internal.HyperNodeConfig{
+					Enabled: true, LabelKey: "custom/hn",
+					ValueTemplate: "sp-{{ .SuperPodID }}-a3",
+				}
+			},
+			id:   7,
+			want: map[string]string{"custom/hn": "sp-7-a3"},
+		},
+		{
+			name: "unknown id (-1) keeps labels nil",
+			cfg: func() internal.HyperNodeConfig {
+				return internal.HyperNodeConfig{Enabled: true, LabelKey: DefaultHyperNodeLabelKey}
+			},
+			id:   -1,
+			want: nil,
+		},
+		{
+			name: "unsupported (-2 with error) keeps labels nil",
+			cfg: func() internal.HyperNodeConfig {
+				return internal.HyperNodeConfig{Enabled: true, LabelKey: DefaultHyperNodeLabelKey}
+			},
+			id:    -2,
+			idErr: monitor.ErrSuperPodUnsupported,
+			want:  nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hyperNodeCfg = tc.cfg()
+			superPodIDFunc = func() (int32, error) { return tc.id, tc.idErr }
+			got := resolveHyperNodeLabels()
+			if len(got) != len(tc.want) {
+				t.Fatalf("resolveHyperNodeLabels() = %v, want %v", got, tc.want)
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Fatalf("resolveHyperNodeLabels()[%s] = %q, want %q", k, got[k], v)
+				}
+			}
+		})
+	}
+}
+
+func TestRegisterHAMiHyperNodeLabel(t *testing.T) {
+	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "test-node", Labels: map[string]string{"keep": "me"}}}
+	t.Cleanup(setupFakeClient(nil, []*v1.Node{node}))
+	ps := &PluginServer{
+		nodeName:        node.Name,
+		registerAnno:    "hami.io/node-register-Ascend910C",
+		handshakeAnno:   "hami.io/node-handshake-Ascend910C",
+		mgr:             &FakeManager{},
+		hyperNodeLabels: map[string]string{DefaultHyperNodeLabelKey: "supernode-3"},
+	}
+
+	if err := ps.registerHAMi(); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := client.KubeClient.CoreV1().Nodes().Get(context.Background(), node.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := updated.Labels[DefaultHyperNodeLabelKey]; got != "supernode-3" {
+		t.Fatalf("node label %s = %q, want %q", DefaultHyperNodeLabelKey, got, "supernode-3")
+	}
+	if got := updated.Labels["keep"]; got != "me" {
+		t.Fatalf("existing label keep=me was dropped, got %q", got)
+	}
+
+	// A second registration with unchanged labels must stay a no-op success.
+	if err := ps.registerHAMi(); err != nil {
+		t.Fatalf("idempotent re-registration failed: %v", err)
+	}
+}
+
+func TestHyperNodeLabelsNeedUpdate(t *testing.T) {
+	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n", Labels: map[string]string{"hami.io/hypernode": "supernode-3"}}}
+	if hyperNodeLabelsNeedUpdate(node, map[string]string{"hami.io/hypernode": "supernode-3"}) {
+		t.Fatal("unchanged labels must not need update")
+	}
+	if !hyperNodeLabelsNeedUpdate(node, map[string]string{"hami.io/hypernode": "supernode-4"}) {
+		t.Fatal("changed value must need update")
+	}
+	if !hyperNodeLabelsNeedUpdate(node, map[string]string{"other/key": "v"}) {
+		t.Fatal("missing key must need update")
+	}
+	if hyperNodeLabelsNeedUpdate(nil, map[string]string{"k": "v"}) {
+		t.Fatal("nil node must never need update")
 	}
 }

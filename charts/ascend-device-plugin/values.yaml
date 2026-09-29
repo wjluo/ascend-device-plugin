@@ -74,6 +74,17 @@ nodeConfigMap: # @schema required:true;additionalProperties:false
   # nodeConfigMap.name -- Per-node configuration ConfigMap name.
   name: hami-device-node-config # @schema required:true
 
+hypernode: # @schema additionalProperties:false
+  # hypernode.enabled -- Write the supernode identity label (hami.io/hypernode)
+  # on the Node from the DCMI-reported super-pod id, consumed by HAMi's
+  # hypernode-aware scheduling. Nodes without supernode semantics stay
+  # unlabelled and scheduling degrades gracefully.
+  enabled: true # @schema required:true
+  # hypernode.labelKey -- Node label key carrying the supernode identity.
+  labelKey: hami.io/hypernode # @schema required:true
+  # hypernode.valueTemplate -- Label value rendered from the super-pod id.
+  valueTemplate: supernode-{{`{{ .SuperPodID }}`}} # @schema required:true
+
 hamiVnpuCore: # @schema required:true;additionalProperties:false
   # hamiVnpuCore.enabled -- Enable hami-vnpu-core in the generated global device configuration.
   enabled: false # @schema required:true
@@ -110,6 +121,10 @@ deviceConfig: |- # @schema required:true
     enpu: {{ .Values.enpu.enabled }}
     deviceCoreScaling: {{ .Values.hamiVnpuCore.deviceCoreScaling }}
     enpuPolicy: {{ .Values.enpu.defaultPolicy }}
+    hypernode:
+      enabled: {{ .Values.hypernode.enabled }}
+      labelKey: {{ .Values.hypernode.labelKey }}
+      valueTemplate: {{ .Values.hypernode.valueTemplate | quote }}
     configs:
     - chipName: 910A
       commonWord: Ascend910A
