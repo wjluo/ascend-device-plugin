@@ -78,6 +78,11 @@ type PluginServer struct {
 	// when the set actually changed.
 	lastPublishedDevices string
 
+	// topologyAbsentAnnounced latches the once-per-change notice that this node
+	// carries no superpod annotation; the registration loop would otherwise
+	// repeat it every 30s.
+	topologyAbsentAnnounced bool
+
 	// test hooks — injected by tests to avoid real socket/kubelet dependencies
 	dialFunc                 func(unixSocketPath string, timeout time.Duration) (*grpc.ClientConn, error)
 	registerKubeletFunc      func() error

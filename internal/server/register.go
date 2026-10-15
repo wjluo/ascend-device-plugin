@@ -161,6 +161,7 @@ func (ps *PluginServer) registerHAMi() error {
 	} else {
 		annos[VNPUNodeENPUAnnotation] = "false"
 	}
+	ps.appendSuperpodAnnotations(annos)
 
 	node, err := util.GetNode(ps.nodeName)
 	if err != nil {
