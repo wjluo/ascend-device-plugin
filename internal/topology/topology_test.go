@@ -130,7 +130,9 @@ func TestStaleAnnotations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := StaleAnnotations(tt.current, tt.desired)
-			if !reflect.DeepEqual(got, tt.want) && !(len(got) == 0 && len(tt.want) == 0) {
+			// Both empty counts as identical; DeepEqual would tell nil and []string{} apart.
+			identical := reflect.DeepEqual(got, tt.want) || (len(got) == 0 && len(tt.want) == 0)
+			if !identical {
 				t.Errorf("StaleAnnotations() = %v, want %v", got, tt.want)
 			}
 		})
