@@ -1,0 +1,45 @@
+# Superpod build: keeps the upstream v1.4.0 image's hami-vnpu-core assets
+# (libvnpu.so, ld.so.preload) and enpu-runtime layout, and only replaces the
+# ascend-device-plugin binary with the locally built one that reports the
+# superpod identity via hami.io/superpodid node annotations.
+#
+# Both stages are pinned by digest rather than by tag: this image's binary writes
+# the node annotations that decide where every Ascend workload in the cluster is
+# placed, so what goes into it has to be a specific artifact, not "whatever the
+# tag points at today".
+FROM docker.io/projecthami/ascend-device-plugin:v1.4.0@sha256:49ad438e98da8c15ad53a6876bc3c24a3b9d1f14c7f152d48f8876733cb9016a AS base
+
+# Build the binary from the working tree on the same distro the upstream
+# Dockerfile uses (ubuntu 20.04 + gcc), because the DCMI bindings in
+# mind-cluster are cgo and need a gcc toolchain.
+FROM docker.io/library/ubuntu:20.04@sha256:c664f8f86ed5a386b0a340d981b8f81714e21a8b9c73f658c4bea56aa179d54a AS build
+ARG GO_VERSION=1.26.2
+# From https://go.dev/dl/ for go${GO_VERSION}.linux-amd64.tar.gz. The toolchain
+# is downloaded at build time, so without a checksum it is an unpinned path into
+# the binary that ends up on every node.
+ARG GO_SHA256=990e6b4bbba816dc3ee129eaeaf4b42f17c2800b88a2166c265ac1a200262282
+ARG GOPROXY
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update -y && apt install -y gcc make wget ca-certificates
+RUN wget -qO /tmp/go.tgz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
+    && echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c - \
+    && tar -C /usr/local -xzf /tmp/go.tgz \
+    && rm /tmp/go.tgz
+ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH
+ENV GOPATH=/go
+ENV GOPROXY=${GOPROXY:-https://goproxy.cn,direct}
+WORKDIR /src
+COPY . .
+# The three `go get` lines are upstream's own workaround for go.mod replacing
+# huawei.com/npu-exporter with ./mind-cluster/component/npu-exporter: a replaced
+# local module has no version, and the nested packages need one named. They are
+# not drift to fix here.
+RUN go mod download github.com/Project-HAMi/HAMi && \
+    go get github.com/Project-HAMi/ascend-device-plugin/internal/server && \
+    go get huawei.com/npu-exporter && \
+    go get huawei.com/npu-exporter/utils/logger@v0.0.0-00010101000000-000000000000 && \
+    go build -trimpath -ldflags '-s -w' -o /out/ascend-device-plugin ./cmd/main.go
+
+FROM base
+COPY --from=build /out/ascend-device-plugin /usr/local/bin/ascend-device-plugin
+ENTRYPOINT ["ascend-device-plugin"]

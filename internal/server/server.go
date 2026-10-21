@@ -53,6 +53,13 @@ const (
 
 var (
 	reportTimeOffset = flag.Int64("report_time_offset", 1, "report time offset")
+
+	// topologyPruneStaleFlag decides whether topology annotations the node has
+	// outgrown are deleted. It defaults to false: an operator-set
+	// hami.io/superpodid looks exactly like a plugin-set one, and deleting an
+	// operator's value unasked is not this plugin's call.
+	topologyPruneStaleFlag = flag.Bool("topology_prune_stale", false,
+		"whether to remove hami.io/superpodid, hami.io/rackid and hami.io/serverid annotations this node no longer reports; node registration only merges, so a server moved to another rack keeps advertising its old domain until this is enabled")
 )
 
 type PluginServer struct {
@@ -77,6 +84,16 @@ type PluginServer struct {
 	// kubelet through ListAndWatch, so watchAndRegister only pushes an update
 	// when the set actually changed.
 	lastPublishedDevices string
+
+	// topologyAbsentAnnounced latches the once-per-change notice that this node
+	// carries no superpod annotation; the registration loop would otherwise
+	// repeat it every 30s.
+	topologyAbsentAnnounced bool
+
+	// topologyPruneStale decides whether topology annotations the node has
+	// outgrown are deleted. Off by default: an operator-set hami.io/superpodid
+	// looks exactly like a plugin-set one.
+	topologyPruneStale bool
 
 	// test hooks — injected by tests to avoid real socket/kubelet dependencies
 	dialFunc                 func(unixSocketPath string, timeout time.Duration) (*grpc.ClientConn, error)
@@ -140,6 +157,7 @@ func NewPluginServer(mgr manager.Manager, nodeName string, checkIdleVNPUInterval
 		healthCh:                      make(chan int32),
 		checkIdleVNPUInterval:         checkIdleVNPUInterval,
 		enablePeriodicIdleVNPUCleanup: enablePeriodicIdleVNPUCleanup,
+		topologyPruneStale:            *topologyPruneStaleFlag,
 	}
 	// enable calling hami methods
 	device.InRequestDevices[commonWord] = server.toAllocDeviceAnno
