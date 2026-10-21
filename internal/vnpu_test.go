@@ -386,3 +386,83 @@ func TestLoadNodeConfigModes(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfigDeviceSplitCount(t *testing.T) {
+	config, err := LoadConfig(writeConfig(t, "vnpus:\n  deviceSplitCount: 7\n  configs: []\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.VNPUs.DeviceSplitCount != 7 {
+		t.Fatalf("split count = %d, want 7", config.VNPUs.DeviceSplitCount)
+	}
+	if _, err := LoadConfig(writeConfig(t, "vnpus:\n  deviceSplitCount: invalid\n")); err == nil {
+		t.Fatal("expected invalid split count to fail decoding")
+	}
+}
+
+func TestResolveHamiCorePolicy(t *testing.T) {
+	for _, tc := range []struct{ value, want string }{
+		{"", "spatial"}, {" \t", "spatial"}, {"spatial", "spatial"},
+		{"dynamic", "dynamic"}, {"fixed", "fixed"}, {"overdraft", "overdraft"},
+		{" SPATIAL ", "spatial"}, {" Fixed ", "fixed"},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			got, err := ResolveHamiCorePolicy(tc.value)
+			if err != nil || got != tc.want {
+				t.Fatalf("ResolveHamiCorePolicy(%q) = %q, %v; want %q", tc.value, got, err, tc.want)
+			}
+		})
+	}
+	for _, value := range []string{"fixed-share", "elastic", "true", "0", "spacial"} {
+		if _, err := ResolveHamiCorePolicy(value); err == nil || !strings.Contains(err.Error(), "hamiCorePolicy") {
+			t.Fatalf("ResolveHamiCorePolicy(%q) error = %v, want policy error", value, err)
+		}
+	}
+}
+
+func TestLoadHamiCorePolicy(t *testing.T) {
+	for _, tc := range []struct{ field, want string }{
+		{"", "spatial"}, {"hamiCorePolicy: ''", "spatial"}, {"hamiCorePolicy: null", "spatial"},
+		{"hamiCorePolicy: spatial", "spatial"}, {"hamiCorePolicy: dynamic", "dynamic"},
+		{"hamiCorePolicy: fixed", "fixed"}, {"hamiCorePolicy: overdraft", "overdraft"},
+		{"hamiCorePolicy: ' SPATIAL '", "spatial"},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			global, err := LoadConfig(writeConfig(t, "vnpus:\n  configs: []\n  "+tc.field+"\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := ResolveHamiCorePolicy(global.VNPUs.HamiCorePolicy)
+			if err != nil || got != tc.want {
+				t.Fatalf("global policy = %q, %v; want %q", got, err, tc.want)
+			}
+			node, err := LoadNodeConfig(writeConfig(t, "nodes:\n- name: test-node\n  "+tc.field+"\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err = ResolveHamiCorePolicy(node.Nodes[0].HamiCorePolicy)
+			if err != nil || got != tc.want {
+				t.Fatalf("node policy = %q, %v; want %q", got, err, tc.want)
+			}
+			if (tc.field == "" || tc.field == "hamiCorePolicy: ''" || tc.field == "hamiCorePolicy: null") && node.Nodes[0].HamiCorePolicy != "" {
+				t.Fatal("empty node policy must remain empty to inherit the global setting")
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidHamiCorePolicy(t *testing.T) {
+	for _, field := range []string{
+		"hamiCorePolicy: spacial", "hamiCorePolicy: fixed-share", "hamiCorePolicy: false",
+		"hamiCorePolicy: 1", "hamiCorePolicy: [spatial]", "hamiCorePolicy: {name: spatial}",
+	} {
+		t.Run(field, func(t *testing.T) {
+			if _, err := LoadConfig(writeConfig(t, "vnpus:\n  "+field+"\n")); err == nil || !strings.Contains(err.Error(), "hamiCorePolicy") {
+				t.Fatalf("global invalid policy error = %v", err)
+			}
+			if _, err := LoadNodeConfig(writeConfig(t, "nodes:\n- name: test-node\n  "+field+"\n")); err == nil || !strings.Contains(err.Error(), "hamiCorePolicy") {
+				t.Fatalf("node invalid policy error = %v", err)
+			}
+		})
+	}
+}

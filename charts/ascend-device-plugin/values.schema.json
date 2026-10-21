@@ -13,6 +13,7 @@
         "nodeConfigMap",
         "hamiVnpuCore",
         "enpu",
+        "deviceSplitCount",
         "deviceConfig",
         "nodeConfig"
     ],
@@ -58,6 +59,12 @@
         },
         "deviceConfig": {
             "type": "string"
+        },
+        "deviceSplitCount": {
+            "type": [
+                "integer"
+            ],
+            "minimum": 1
         },
         "enpu": {
             "type": "object",
@@ -117,9 +124,19 @@
             "type": "object",
             "required": [
                 "enabled",
+                "defaultPolicy",
                 "deviceCoreScaling"
             ],
             "properties": {
+                "defaultPolicy": {
+                    "type": "string",
+                    "enum": [
+                        "spatial",
+                        "dynamic",
+                        "fixed",
+                        "overdraft"
+                    ]
+                },
                 "deviceCoreScaling": {
                     "type": [
                         "number"
